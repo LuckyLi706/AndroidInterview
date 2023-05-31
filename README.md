@@ -713,7 +713,16 @@
 
   3. 最后，客户端收到连接成功的消息后，开始借助于TCP传输信道进行全双工通信。
 
-+ 
+#### WebRTC
+
++ 流程
+  1. ClientA首先创建PeerConnection对象，然后打开本地音视频设备，将音视频数据封装成MediaStream添加到PeerConnection中。
+  2. ClientA调用PeerConnection的CreateOffer方法创建一个用于offer的SDP对象，SDP对象中保存当前音视频的相关参数。ClientA通过PeerConnection的SetLocalDescription方法将该SDP对象保存起来，并通过Signal服务器发送给ClientB。
+  3. ClientB接收到ClientA发送过的offer SDP对象，通过PeerConnection的SetRemoteDescription方法将其保存起来，并调用PeerConnection的CreateAnswer方法创建一个应答的SDP对象，通过PeerConnection的SetLocalDescription的方法保存该应答SDP对象并将它通过Signal服务器发送给ClientA。
+  4. ClientA接收到ClientB发送过来的应答SDP对象，将其通过PeerConnection的SetRemoteDescription方法保存起来。
+  5. 在SDP信息的offer/answer流程中，ClientA和ClientB已经根据SDP信息创建好相应的音频Channel和视频Channel并开启Candidate数据的收集，Candidate数据可以简单地理解成Client端的IP地址信息（本地IP地址、公网IP地址、Relay服务端分配的地址）。
+  6. 当ClientA收集到Candidate信息后，PeerConnection会通过OnIceCandidate接口给ClientA发送通知，ClientA将收到的Candidate信息通过Signal服务器发送给ClientB，ClientB通过PeerConnection的AddIceCandidate方法保存起来。同样的操作ClientB对ClientA再来一次。
+  7. 这样ClientA和ClientB就已经建立了音视频传输的P2P通道，ClientB接收到ClientA传送过来的音视频流，会通过PeerConnection的OnAddStream回调接口返回一个标识ClientA端音视频流的MediaStream对象，在ClientB端渲染出来即可。同样操作也适应ClientB到ClientA的音视频流的传输。
 
 ### 设计模式
 
@@ -1363,7 +1372,7 @@
 
 ## Kotlin
 
-### run、apply、let、also、with的用法和区别
+### 高阶函数
 
 #### let
 
@@ -1465,15 +1474,187 @@ val adam = Person("Adam").apply {
 }
 ```
 
-### 其他
+- map
+- flatMap
+- reduce
+- fold
+- joinToString
+- filter
 
-
+### 闭包
 
 ### 协程
 
+#### 协程的启动方式
+
+```kotlin
+// 方法一，中文意思是运行阻塞，顾名思义，会阻塞当前线程执行
+println("测试开始 " + (Thread.currentThread() == Looper.getMainLooper().thread))
+runBlocking {
+    println("测试延迟开始 " + (Thread.currentThread() == Looper.getMainLooper().thread))
+    delay(20000)  //delay以及supsend必须要在协程里面使用
+    println("测试延迟结束")
+}
+println("测试结束")
+/**
+12:53:15.799 System.out: 测试开始 true
+12:53:15.811 System.out: 测试延迟开始 true
+12:53:35.814 System.out: 测试延迟结束
+12:53:35.815 System.out: 测试结束
+**/
+
+// 方法二，使用 GlobalScope 单例对象,GlobalScope 实际是CoroutineScope的子类,本质是CoroutineScope
+println("测试开始 " + (Thread.currentThread() == Looper.getMainLooper().thread))
+GlobalScope.launch {
+    println("测试延迟开始 " + (Thread.currentThread() == Looper.getMainLooper().thread))
+    delay(20000)
+    println("测试延迟结束")
+}
+println("测试结束")
+/**
+17:19:17.190 System.out: 测试开始 true
+17:19:17.202 System.out: 测试结束
+17:19:17.203 System.out: 测试延迟开始 false
+17:19:37.223 System.out: 测试延迟结束
+**/
 
 
-## Android
+//方法四，使用async开启协程，异步可以通过await拿到返回结果
+println("测试开始 " + (Thread.currentThread() == Looper.getMainLooper().thread))
+val async = GlobalScope.async {
+    println("测试延迟开始 " + (Thread.currentThread() == Looper.getMainLooper().thread))
+    delay(20000)
+    println("测试延迟结束")
+    return@async "666666"
+}
+println("测试结束")
+println("测试返回值：" + async.await())
+/**
+输出
+17:50:57.117 System.out: 测试开始 true
+17:50:57.120 System.out: 测试结束
+17:50:57.120 System.out: 测试延迟开始 false
+17:51:17.131 System.out: 测试延迟结束
+17:51:17.133 System.out: 测试返回值：666666
+**/
+```
+
+#### 线程调度器
+
+- Dispatchers.Main：主线程调度器，人如其名，会在主线程中执行
+- Dispatchers.IO：工作线程调度器，人如其名，会在子线程中执行
+- Dispatchers.Default：默认调度器，没有设置调度器时就用这个，经过测试效果基本等同于 `Dispatchers.IO`
+- Dispatchers.Unconfined：无指定调度器，根据当前执行的环境而定，会在当前的线程上执行，另外有一点需要注意，由于是直接拿当前线程执行，经过实践，协程块中的代码执行过程中不会有延迟，会被立马执行，除非遇到需要协程被挂起了，才会去执行协程外的代码，这个也是跟其他类型的调度器不相同的地方
+
+```kotlin
+println("测试开始 " + (Thread.currentThread() == Looper.getMainLooper().thread))
+GlobalScope.launch(Dispatchers.Main) {   //当前会在主线程运行
+    println("测试延迟开始 " + (Thread.currentThread() == Looper.getMainLooper().thread))
+    delay(20000)
+    println("测试延迟结束")
+}
+println("测试结束")
+
+//线程切换
+println("测试开始 " + (Thread.currentThread() == Looper.getMainLooper().thread))
+GlobalScope.launch(Dispatchers.Main) {   //主线程运行
+    /**
+    withContext 的作用就是将当前线程挂起，只有当 withContext 里面的代码执行完了，才会恢复当前线程的执行
+    withContext 只能在协程的操作符或者被 suspend 修饰的方法中才能调用
+    **/
+    withContext(Dispatchers.IO) {  
+        println("测试是否为主线程 " + (Thread.currentThread() == Looper.getMainLooper().thread))
+    }
+    println("测试延迟开始 " + (Thread.currentThread() == Looper.getMainLooper().thread))
+    delay(20000)
+    println("测试延迟结束")
+}
+println("测试结束")
+/**
+输出：
+2:21:21.355 System.out: 测试开始 true
+22:21:21.367 System.out: 测试结束
+22:21:21.390 System.out: 测试是否为主线程 false
+22:21:22.058 System.out: 测试延迟开始 true
+22:21:42.059 System.out: 测试延迟结束
+**/
+```
+
+#### 启动模式
+
++ CoroutineStart.DEFAULT：默认模式，会立即执行
++ CoroutineStart.LAZY：懒加载模式，不会执行，只有手动调用协程的 start 方法才会执行
++ CoroutineStart.ATOMIC：原子模式，跟 `CoroutineStart.DEFAULT` 类似，但协程在开始执行之前不能被取消，需要注意的是，这是一个实验性的 api，后面可能会发生变更。
++ CoroutineStart.UNDISPATCHED：未指定模式，会立即执行协程，经过实践得出，会导致原先设置的线程调度器失效，一开始会在原来的线程上执行，类似于 `Dispatchers.Unconfined`，但是一旦协程被挂起，再恢复执行，会变成线程调度器的设置的线程上面去执行。
+
+```kotlin
+//懒加载模式
+val job = GlobalScope.launch(Dispatchers.Default, CoroutineStart.LAZY) {
+
+}
+job.start()
+
+/**
+job.start：启动协程，除了 lazy 模式，协程都不需要手动启动
+job.cancel：取消一个协程，可以取消，但是不会立马生效，存在一定延迟
+job.join：等待协程执行完毕，这是一个耗时操作，需要在协程中使用
+job.cancelAndJoin：等待协程执行完毕然后再取消
+**/
+```
+
+#### 协程的异常
+
+- 协程的异常，一般使用`try/catch`或者`runCatching`内置函数来处理
+- 协程处理异常的第二个方法是使用`CoroutineExceptionHandler`
+
+#### Android的协程
+
+通过 CoroutineScope 开启的协程是全局的，也就是不会跟随组件（例如 Activity）的生命周期，这样就可能会导致一些内存泄漏的问题。`GlobalScope`是生命周期是process级别的，即使Activity或Fragment已经被销毁，[协程](https://so.csdn.net/so/search?q=协程&spm=1001.2101.3001.7020)仍然在执行。
+
++ LifecycleScope 
+
+  如果是在 LifecycleOwner 的子类（AppCompatActivity 和 Fragment 都是它的子类）中使用，这样写出来的协程会在 Lifecycle 派发 destroy 事件的时候 cancel 掉
+
+  ```kotlin
+  class TestActivity : AppCompatActivity() {
+  
+      fun test() {
+      
+          lifecycleScope.launch {
+              
+          }
+      }
+  }
+  ```
+
++ ViewLifecycleOwner
+
+  如果是在 ViewModel 的子类中使用，这样写出来的协程会在 ViewModel 调用 clear 方法的时候 cancel 掉
+
+  ```kotlin
+  class TestViewModel : ViewModel() {
+      
+      fun test() {
+      
+          viewModelScope.launch() {
+  
+          }
+      }
+  }
+  ```
+
++ 手动取消
+
+  如果我是在 Lifecycle 或者 ViewModel 之外的地方使用协程，又担心内存泄漏，那么该怎么办呢？
+
+  ```kotlin
+  val launch = GlobalScope.launch() {
+      
+  }
+  launch.cancel()
+  ```
+
+#### 原理
 
 ### 四大组件
 
@@ -1677,7 +1858,41 @@ val adam = Person("Adam").apply {
     }
     ```
 
-  - 
+#### 动画
+
++ 有哪些动画
+
+  - 帧动画
+
+    AnimationDrawable，帧动画，由一组图片集合而成，是一种具有动画效果的图片资源，对应的xml标签是animation-list
+
+  - 补间动画
+
+    是补间动画，主要是向View对象设置动画效果，包括AlphaAnimation 、RotateAnimation 、ScaleAnimation 、TranslateAnimation 这4种效果，对应的xml标签分别是alpha、rotate、scale、translate。
+
+    只产生了一个动画效果，其真实的坐标并没有发生改变（只是改变了View的显示效果而已，并不会真正的改变View的属性）。View做在做动画的时候，它并没有真正的移动它的位置，而是根据动画时间的插值，计算出一个Matrix，然后不停的invalidate，在onDraw中的Canvas上使用这个计算出来的Matrix去draw这个View的内容，并有onLayout中还是原来的位置，所以点击事件只能点击到原来的位置才能触发。
+
+  - 属性动画
+
+    -  ObjectAnimator
+
+      一般直接用与View，要求作用的View提供该属性（如View的scaleX属性）的getter、setter方法（如setScaleX()方法），可以直接改变view的属性所以View的位置也跟随属性的改变而改变，点击事件的触发位置为动画结束的位置。
+
+    - ValueAnimator
+
+      属性动画的核心，这个我理解为数值动画，ObjectAnimator也只不过是通过不断改变的数值然后赋值给相应的属性而已。通过设置初始和终点值，ValueAnimator 会通过相应的Interpolator  和duration 计算出平滑的数值变化，然后可以通过得到的Value进行任意操作
+
++ 插值器和估值器
+
+  - 插值器
+
+    作用：设置 属性值 从初始值过渡到结束值 的变化规律
+
+  - 估值器
+
+    作用：设置 属性值 从初始值过渡到结束值 的变化具体数值
+
++ 
 
 ### 开源库
 
