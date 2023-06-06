@@ -409,6 +409,7 @@
   4. workQueue，就是等待队列，任务可以储存在任务队列中等待被执行，执行的是FIFIO原则(先进先出)。
   5. threadFactory，就是创建线程的线程工厂。
   6. handler，是一种拒绝策略，我们可以在任务满了之后，拒绝执行某些任务。
++ 执行流程
 
 ##### ThreadLocal
 
@@ -1656,6 +1657,89 @@ job.cancelAndJoin：等待协程执行完毕然后再取消
 
 #### 原理
 
+### 其他
+
++ 委托机制
+
+  - 类委托
+
+    一个类的方法不在该类中定义，而是直接委托给另一个对象来处理。
+
+    ```kotlin
+    // 基础接口
+    interface Base {   
+        fun print()
+    }
+    
+    // 基础对象
+    class BaseImpl(val x: Int) : Base {
+        override fun print() { print(x) }
+    }
+    
+    // 被委托类（通过by关键字）
+    class Derived(b: Base) : Base by b
+    
+    fun main(args: Array<String>) {
+        val b = BaseImpl(10)
+        Derived(b).print() // 最终调用了 Base#print()
+    }
+    ```
+
+  - 属性委托
+
+    一个类的属性不在该类中定义，而是直接委托给另一个对象来处理。
+
+    ```kotlin
+    class Example {
+        // 被委托属性
+        var prop: String by Delegate() // 基础对象
+    }
+    
+    // 基础类
+    class Delegate {
+        private var _realValue: String = "彭"
+    
+        operator fun getValue(thisRef: Any?, property: KProperty<*>): String {
+            println("getValue")
+            return _realValue
+        }
+    
+        operator fun setValue(thisRef: Any?, property: KProperty<*>, value: String) {
+            println("setValue")
+            _realValue = value
+        }
+    }
+    
+    fun main(args: Array<String>) {
+        val e = Example()
+        println(e.prop)    // 最终调用 Delegate#getValue()
+        e.prop = "Peng"    // 最终调用 Delegate#setValue()
+        println(e.prop)    // 最终调用 Delegate#getValue()
+    }
+    
+    /**
+    输出：
+    getValue
+    彭
+    setValue
+    getValue
+    Peng
+    **/
+    ```
+
+  - 局部变量委托
+
++ arrayOf和IntArray的区别
+
+  ```kotlin
+  val intArray = intArrayOf(1,2,3)// IntArray类型
+  //int[] array = new int[]{1,3,4};  java的这个等同于上面的kotlin代码，没有进行装箱操作
+  
+  val arrayOfInt = arrayOf(1,3,4)// Array<Int>类型，这种其实是构造出一个Integer[]，每加个数字，调用Integer.valueOf产生装箱。
+  ```
+
++ 单例模式的实现
+
 ### 四大组件
 
 #### Activity
@@ -2155,11 +2239,13 @@ job.cancelAndJoin：等待协程执行完毕然后再取消
 
     Gradle按照依赖顺序依次执行task。
 
-## Dart
+## Flutter
+
+### Dart
 
 + 混入 mixins （关键字 with）的含义?
 
-  将类A mixins 到 B，B可以使用A的属性和方法，B就具备了A的功能，但是需要强调的是：
+  将类A mixins 到 B，B可以使用A的属性和方法，B就具备了A的功能， mixin定义的类不能有构造方法，这样可以避免继承多个类而产生的父类构造方法冲突，但是需要强调的是：
 
   1. mixins的对象是类
   2. mixins绝不是继承，也不是接口，而是一种全新的特性
@@ -2177,17 +2263,309 @@ job.cancelAndJoin：等待协程执行完毕然后再取消
 
   使用extension 类名 on 原始类名 {  .....  }
 
-## Flutter
++ Future和Stream
 
-+ Flutter和RN的区别？
+  Stream和Future都是用于接收异步事件数据，但是Future是表示单个计算结果的异步封装，而Stream表示的是多个序列化事件的异步封装
 
-  - React Native
+  - Future
 
-    通过写 JS 代码配置页面布局，然后 React Native 最终会解析渲染成原生控件，如  标签对应 ViewGroup/UIView ， 标签对应 ScrollView/UIScrollView ，标签对应 ImageView/UIImageView 等。
+    1. 配合await和aysnc来达到同步操作，配合then来达到回调结果
+    2. 可以使用Future.wait来配合多个异步任务，来统一获取结果
 
-  - Flutter
+  - FutureBuilder
 
-    Flutter中绝大部分的 Widget 都与平台无关， 开发者基于 Framework 开发 App ，而 Framework 运行在 Engine 之上，由 Engine 进行适配和跨平台支持。这个跨平台的支持过程，其实就是将 Flutter UI 中的 Widget “数据化” ，然后通过 Engine 上的 Skia 直接绘制到屏幕上
+    FutureBuilder会基于传入的future的返回结果来构建Widget。
+
+    ```dart
+    class FutureBuilderDemo extends StatefulWidget {
+      const FutureBuilderDemo({Key key}) : super(key: key);
+    
+      @override
+      _FutureBuilderDemoState createState() => _FutureBuilderDemoState();
+    }
+    
+    class _FutureBuilderDemoState extends State<FutureBuilderDemo> {
+      Future<String> futureData;
+    
+      @override
+      void initState() {
+        super.initState();
+        /// ui初始化时开始网络请求数据
+        futureData = getData();
+      }
+    
+      @override
+      Widget build(BuildContext context) {
+        return Scaffold(
+          appBar: AppBar(
+            title: Text('FutureBuilder 测试'),
+          ),
+          body: Container(
+            child: Center(
+              child: FutureBuilder<String>(
+                  future: futureData,
+                  builder: (BuildContext context, AsyncSnapshot snapshot) {
+                    if (snapshot.hasData) {
+                      return Text("获取的数据==${snapshot.data}");
+                    } else if (snapshot.hasError) {
+                      return Icon(Icons.error_outline);
+                    } else {
+                      return CircularProgressIndicator();
+                    }
+                  }),
+            ),
+          ),
+        );
+      }
+    
+      Future<String> getData() async {
+        /// 模拟网络请求，等待5秒返回结果
+        await Future.delayed(Duration(seconds: 5));
+    
+        /// 返回一个错误
+        // return Future.error("error");
+        /// 返回一个成功的结果
+        return "Hello,world";
+      }
+    }
+    ```
+
+  - Stream
+
+    - 构造方法
+
+      1. Stream.fromFuture，通过传递一个异步任务来创建Stream
+
+         ```dart
+         static stream1() {
+             Stream stream = Stream.fromFuture(
+                 Future.delayed(const Duration(milliseconds: 500)).then((value) {
+               return '我是Stream的future执行结果';
+             }));
+             stream.listen((event) {
+               toPrint(event);
+             });
+           }
+         ```
+
+      2. Stream.fromFuture，通过传递一个异步任务来创建Stream
+
+         ```dart
+         //在执行多个异步任务的时候，每个异步任务执行完成后，都会走stream的监听回调，跟Future.wait不同的是，Future.wait是等所有异步任务执行完毕才走的回调,但是stream也可以在onDone的方法里面去监听到所有的异步任务完成的操作
+         static stream2() {
+             Stream stream = Stream.fromFutures([
+               getFuture(1, 500, '我是第1个Future'),
+               getFuture(2, 500, '我是第2个Future'),
+               getFuture(3, 500, '我是第3个Future')
+             ]);
+             stream.listen((event) {
+               toPrint('event:$event');
+             },onDone: (){
+               toPrint('执行完成');
+             });
+           }
+         
+           static getFuture(int type, int ms, String resultStr) {
+             return Future.delayed(Duration(milliseconds: ms)).then((value) {
+               toPrint('第$type个future执行完毕');
+               return resultStr;
+             });
+           }
+         
+         /**
+         第1个future执行完毕
+         event:我是第1个Future
+         第2个future执行完毕
+         event:我是第2个Future
+         第3个future执行完毕
+         event:我是第3个Future
+         执行完成
+         **/
+         ```
+
+      3. Stream.fromIterable 通过传递一个集合来创建Stream，集合中的每一个数据都会有自己的回调
+
+         ```dart
+         static stream3(){
+             Stream stream = Stream.fromIterable([1,2,3,4]);
+             stream.listen((event) {
+               toPrint('event:$event');
+             });
+             //print:1234
+           }
+         ```
+
+    - Stream的订阅流
+
+      1. 单订阅流
+
+         ```dart
+         /**
+         1.创建StreamController
+         2.使用StreamSink作为事件入口
+         3.通过Stream用来监听数据，并返回StreamSubscription
+         4.通过StreamSubscription取消订阅，关闭流
+         **/
+         
+         //创建StreamController
+          StreamController streamCtrl = StreamController();
+          //用做添加事件的入口
+          StreamSink get sink => streamCtrl.sink;
+          //Stream用来监听数据
+          Stream get stream => streamCtrl.stream;
+          //Stream的订阅对象
+          StreamSubscription? subscription;
+         
+         @override
+           void initState() {
+             //监听数据
+             subscription = stream.listen((event) {
+               setState(() {
+                 showText += '$event ';
+               });
+             });
+             super.initState();
+           }
+         //添加数据
+           sendData() {
+             sink.add(random.nextInt(100));
+           }
+          @override
+           void dispose() {
+             //取消订阅，关闭流
+             subscription?.cancel();
+             streamCtrl.close();
+             super.dispose();
+           }
+         ```
+
+      2. 多订阅流
+
+  - StreamBuilder
+
+    在界面中，一般使用StreamBuilder来来配合Stream使用。可以实现多状态界面。
+
+    ```dart
+    /// 定义3种ui状态
+    enum UIState { type_1, type_2, type_3 }
+    
+    class StreamBuilderDemo extends StatefulWidget {
+      const StreamBuilderDemo({Key key}) : super(key: key);
+    
+      @override
+      _StreamBuilderDemoState createState() => _StreamBuilderDemoState();
+    }
+    
+    class _StreamBuilderDemoState extends State<StreamBuilderDemo> {
+      StreamController<UIState> _controller;
+    
+      @override
+      void initState() {
+        super.initState();
+    
+        /// 初始化controller
+        _controller = StreamController();
+      }
+    
+      @override
+      Widget build(BuildContext context) {
+        return Scaffold(
+          appBar: AppBar(
+            title: Text('StreamBuilder测试'),
+          ),
+          body: Container(
+            // height: double.infinity,
+            child: Center(
+              child: StreamBuilder<UIState>(
+    
+                  /// 传入stream
+                  stream: _controller.stream,
+                  builder: (BuildContext context, AsyncSnapshot snapshot) {
+                    if (snapshot.hasData) {
+                      /// hasData代表有接收到事件
+                      var data = snapshot.data;
+                      Widget widget;
+    
+                      ///根据返回不回的类型，展示不同的图片
+                      switch (data) {
+                        case UIState.type_1:
+                          widget = Icon(Icons.timer, size: 100);
+                          break;
+                        case UIState.type_2:
+                          widget = Icon(Icons.done, size: 100);
+                          break;
+                        case UIState.type_3:
+                          widget = Icon(Icons.ac_unit, size: 100);
+                          break;
+                      }
+                      return Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          widget,
+                          Text("$data"),
+                        ],
+                      );
+                    } else if (snapshot.hasError) {
+                      /// 接收到错误事件
+                      return Icon(Icons.error_outline_rounded, size: 100);
+                    } else {
+                      /// 什么都没有，代表没还有接收到事件
+                      return Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircularProgressIndicator(),
+                          Text("初始化中，还没接收到收到状态"),
+                        ],
+                      );
+                    }
+                  }),
+            ),
+          ),
+          floatingActionButton: FloatingActionButton(
+              onPressed: () => generateState(), child: Icon(Icons.add)),
+        );
+      }
+    
+      /// 随机生成不同的状态,发送事件
+      generateState() {
+        var randomIndex = Random().nextInt(UIState.values.length);
+        _controller.add(UIState.values[randomIndex]);
+      }
+    
+      @override
+      void dispose() {
+        super.dispose();
+    
+        /// 回收资源
+        _controller.close();
+      }
+    }
+    ```
+
+#### Isolates 多线程
+
+`dart`进入main函数是单线程的，在Dart中，多线程叫做`Isolates`线程，**每个Isolates线程不共享内存，通过消息机制通信**。
+
+```dart
+void test5()async{
+  final rece = ReceivePort();
+  isolate = await Isolate.spawn(sendPort, rece.sendPort);
+   rece.listen((data){
+     print('收到了 ${data} ,name:$name');
+   });
+}
+void sendPort(SendPort sendPort){
+  sendPort.send('发送消息');
+}
+
+Isolate isolate;
+String name='fgyong';
+void main() {
+  test5();
+}
+```
+
+### Widget
 
 + Widget的生命周期
 
@@ -2214,6 +2592,20 @@ job.cancelAndJoin：等待协程执行完毕然后再取消
 
     用于应用界面的布局和绘制，负责真正的渲染，保存了元素的大小，布局等信息，实例化一个 RenderObject 是非常耗能的当应用启动时 Flutter 会遍历并创建所有的 Widget 形成 Widget Tree，通过调用 Widget 上的 createElement() 方法创建每个 Element 对象，形成 Element Tree。最后调用 Element 的 createRenderObject() 方法创建每个渲染对象，形成一个 Render Tree。
 
++ Widget中的Key
+
+  - GlobalKey
+
+    确保生成的Key在整个应用中唯一，是很昂贵的，允许element在树周围移动或变更父节点而不会丢失状态；
+
+  - LocalKey
+
+  - UniqueKey
+
+  - ObjectKey
+
+### 与原生通信
+
 + Flutter 是如何与原生Android、iOS进行通信的？
 
   Flutter 通过 PlatformChannel 与原生进行交互，其中 PlatformChannel 分为三种：
@@ -2222,4 +2614,21 @@ job.cancelAndJoin：等待协程执行完毕然后再取消
   - MethodChannel ：用于传递方法调用（method invocation）。
   - EventChannel : 用于数据流（event streams）的通信。
 
-+ 
+### 开源库
+
+#### Provider
+
+
+
+### 其他
+
++ Flutter和RN的区别？
+
+  - React Native
+
+    通过写 JS 代码配置页面布局，然后 React Native 最终会解析渲染成原生控件，如  标签对应 ViewGroup/UIView ， 标签对应 ScrollView/UIScrollView ，标签对应 ImageView/UIImageView 等。
+
+  - Flutter
+
+    Flutter中绝大部分的 Widget 都与平台无关， 开发者基于 Framework 开发 App ，而 Framework 运行在 Engine 之上，由 Engine 进行适配和跨平台支持。这个跨平台的支持过程，其实就是将 Flutter UI 中的 Widget “数据化” ，然后通过 Engine 上的 Skia 直接绘制到屏幕上
+
